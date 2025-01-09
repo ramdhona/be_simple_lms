@@ -15,8 +15,8 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
-from lms_core.views import index, testing, addData, editData, deleteData
+from django.urls import path, include
+from lms_core.views import *
 from lms_core.api import apiv1
 
 urlpatterns = [
@@ -27,4 +27,11 @@ urlpatterns = [
     path('ubah/', editData),
     path('hapus/', deleteData),
     path('', index),
+    path('register/', register_user, name='register_user'),
+    path('accounts/login/', login, name='login'),
+    path('profile/<int:user_id>', show_profile),
+    path('edit-profile/', edit_profile),
 ]
+
+urlpatterns += [path('silk/', include('silk.urls', namespace='silk'))]
+

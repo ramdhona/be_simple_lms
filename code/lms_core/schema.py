@@ -1,6 +1,7 @@
 from ninja import Schema
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
+# from pydantic import BaseModel
 
 from django.contrib.auth.models import User
 
@@ -64,3 +65,60 @@ class CourseCommentOut(Schema):
 
 class CourseCommentIn(Schema):
     comment: str
+
+class UserEdited(Schema):
+    first_name : str
+    last_name : str
+    email : str
+    phone_number : str
+    description : str
+    profile_picture : str
+    updated_at : datetime
+    
+class AnnouncementCreateSchema(Schema):
+    course_id: int
+    title: str
+    content: str
+    show_date: date
+    created_by: str
+
+class AnnouncementEditSchema(Schema):
+    title: str
+    content: str
+    show_date: date
+
+class AnnouncementResponseSchema(Schema):
+    id: int
+    course_id: int
+    teacher_id: int
+    title: str
+    content: str
+    date_posted: date
+    show_date: date
+
+
+class CompletionTrackingCreateSchema(Schema):
+    student_username: str  # Username dari student
+    content_id: int
+    course_id: int# ID konten yang udah dikerjain
+    
+    
+class CompletionTrackingResponseSchema(Schema):
+    content_name: str  # Nama konten yang diselesaikan
+    completed_at: datetime  # Waktu selesai
+    completed: bool  # Status apakah udah selesai atau belum
+    
+class BookmarkRequestSchema(Schema):
+    student_id: int
+    content_id: int
+
+
+class BookmarkResponseSchema(Schema):
+    id: int
+    student_id: int
+    content_id: int
+    content_name: str
+    course_id: int
+    course_name: str
+
+

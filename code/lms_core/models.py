@@ -2,6 +2,15 @@ from django.db import models
 from django.contrib.auth.models import User
 
 # Create your models here.
+class Profile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    profile_picture = models.ImageField(upload_to="profile_pictures/", blank=True, null=True)
+
+    def __str__(self):
+        return f"Profile of {self.user.username}"
+
 class Course(models.Model):
     name = models.CharField("Nama Kursus", max_length=255)
     description = models.TextField("Deskripsi")
@@ -69,4 +78,39 @@ class Comment(models.Model):
         verbose_name_plural = "Komentar"
 
     def __str__(self) -> str:
-        return "Komen: "+self.member_id.user_id+"-"+self.comment
+        return f"Komen: {self.member_id.user_id}-{self.comment}"
+
+class Announcement(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    teacher = models.ForeignKey(User, related_name="announcements", on_delete=models.CASCADE)
+    created_by = models.ForeignKey(User, related_name="created_announcements", on_delete=models.CASCADE, default=None, null=True)
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    show_date = models.DateTimeField()
+    date_posted = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+    
+class CompletionTracking(models.Model):
+    student = models.ForeignKey(User, on_delete=models.CASCADE)
+    content = models.ForeignKey(CourseContent, on_delete=models.CASCADE)
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ('student', 'content')
+
+    def __str__(self):
+        return f"{self.student.username} - {self.content.name} - Completed: {self.completed}"
+    
+class Bookmark(models.Model):
+    student = models.ForeignKey(User, on_delete=models.CASCADE)
+    content = models.ForeignKey(CourseContent, on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ('student', 'content')
+
+    def __str__(self):
+        return f"{self.student.username} - {self.content.name}"
+

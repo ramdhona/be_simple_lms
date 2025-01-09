@@ -1,14 +1,23 @@
 from ninja import NinjaAPI, UploadedFile, File, Form
 from ninja.responses import Response
-from lms_core.schema import CourseSchemaOut, CourseMemberOut, CourseSchemaIn
-from lms_core.schema import CourseContentMini, CourseContentFull
-from lms_core.schema import CourseCommentOut, CourseCommentIn
-from lms_core.models import Course, CourseMember, CourseContent, Comment
+from lms_core.schema import CourseSchemaOut, CourseMemberOut, CourseSchemaIn, AnnouncementCreateSchema, AnnouncementEditSchema, AnnouncementResponseSchema
+from lms_core.schema import CourseContentMini, CourseContentFull, CompletionTrackingCreateSchema, BookmarkRequestSchema
+from lms_core.schema import CourseCommentOut, CourseCommentIn, CompletionTrackingResponseSchema, BookmarkResponseSchema
+from lms_core.models import Course, CourseMember, CourseContent, Comment, Profile, Announcement, CompletionTracking, Bookmark
+from django.forms.models import model_to_dict
 from ninja_simple_jwt.auth.views.api import mobile_auth_router
 from ninja_simple_jwt.auth.ninja_auth import HttpJwtAuth
 from ninja.pagination import paginate, PageNumberPagination
 
 from django.contrib.auth.models import User
+from django.shortcuts import get_object_or_404
+from django.http import JsonResponse
+from django.utils import timezone
+from datetime import datetime
+import json
+from django.views.decorators.csrf import csrf_exempt
+
+
 
 apiv1 = NinjaAPI()
 apiv1.add_router("/auth/", mobile_auth_router)
@@ -128,3 +137,276 @@ def delete_comment(request, comment_id: int):
         return {"error": "You are not authorized to delete this comment"}
     comment.delete()
     return {"message": "Comment deleted"}   
+
+@apiv1.post("/edit-profile/", auth=apiAuth)
+def edit_profile(request):
+    try:
+        data = json.loads(request.body)
+
+        first_name = data.get('first_name')
+        last_name = data.get('last_name')
+        email = data.get('email')
+        phone_number = data.get('phone_number')
+        description = data.get('description')
+        profile_picture = data.get('profile_picture')
+
+        user = User.objects.filter(email=email).first()
+        
+        if not user:
+            return JsonResponse({"error": "User not found"}, status=404)
+
+        user.first_name = first_name
+        user.last_name = last_name
+        user.save()
+
+        profile, created = Profile.objects.get_or_create(user=user)
+        profile.phone_number = phone_number
+        profile.description = description
+
+        if profile_picture:
+            profile.profile_picture = profile_picture
+        profile.save()
+        
+        user_data = model_to_dict(user)
+        profile_data = model_to_dict(profile)
+
+        if profile.profile_picture:
+            profile_data['profile_picture'] = profile.profile_picture.url
+
+        return JsonResponse({
+            "user": user_data,
+            "profile": profile_data,
+            "message": "Profile updated successfully!"
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON format"}, status=400)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+    
+@apiv1.post("/announcements/", auth=apiAuth, response=AnnouncementResponseSchema)
+def create_announcement(request, data: AnnouncementCreateSchema):
+    created_by_username = data.created_by
+
+    try:
+        created_by_user = User.objects.get(username=created_by_username)
+    except User.DoesNotExist:
+        return JsonResponse({"detail": "User not found"}, status=404)
+
+    if not created_by_user.is_staff:
+        return JsonResponse({"detail": "Only teachers can create announcements"}, status=403)
+
+    course = get_object_or_404(Course, id=data.course_id)
+
+    announcement = Announcement.objects.create(
+        course=course,
+        teacher=created_by_user,  created_by=created_by_user,  title=data.title,
+        content=data.content,
+        show_date=data.show_date,
+    )
+
+    return JsonResponse({
+        "id": announcement.id,
+        "course_id": announcement.course.id,
+        "teacher_id": announcement.teacher.id,
+        "created_by": announcement.created_by.username,  "title": announcement.title,
+        "content": announcement.content,
+        "show_date": announcement.show_date,
+        "date_posted": announcement.date_posted,
+    }, status=201)
+    
+@apiv1.get("/show-announcement/", auth=apiAuth, response=AnnouncementResponseSchema)
+def show_announcement(request, course_id: int):
+    course = get_object_or_404(Course, id=course_id)
+    
+    announcements = Announcement.objects.filter(course=course)
+    
+    announcement_data = []
+    for announcement in announcements:
+        announcement_data.append({
+            "id": announcement.id,
+            "course_id": announcement.course.id,
+            "teacher_id": announcement.teacher.id,
+            "created_by": announcement.created_by.username,
+            "title": announcement.title,
+            "content": announcement.content,
+            "show_date": announcement.show_date,
+            "date_posted": announcement.date_posted,
+        })
+
+    return JsonResponse({
+        "course_id": course.id,
+        "announcements": announcement_data
+    }, status=200)
+
+@apiv1.put("/edit-announcement/{announcement_id}", auth=apiAuth)
+def edit_announcement(request, announcement_id: int, data: AnnouncementEditSchema):
+    announcement = get_object_or_404(Announcement, id=announcement_id)
+
+    if request.user.id != announcement.teacher.id or not request.user.is_staff:
+        return JsonResponse({"detail": "Only the teacher who created this announcement can edit it."}, status=403)
+
+    announcement.title = data.title
+    announcement.content = data.content
+    announcement.show_date = data.show_date
+    announcement.save()
+
+    return JsonResponse({
+        "message": "Announcement updated successfully",
+        "announcement": {
+            "id": announcement.id,
+            "course_id": announcement.course.id,
+            "teacher_id": announcement.teacher.id,
+            "title": announcement.title,
+            "content": announcement.content,
+            "show_date": announcement.show_date,
+            "date_posted": announcement.date_posted,
+        }
+    }, status=200)
+    
+    
+@apiv1.delete("/delete-announcement/{announcement_id}", auth=apiAuth)
+def delete_announcement(request, announcement_id: int):
+    announcement = get_object_or_404(Announcement, id=announcement_id)
+
+    if request.user.id != announcement.teacher.id or not request.user.is_staff:
+        return JsonResponse({"detail": "Only the teacher who created this announcement can delete it."}, status=403)
+
+    announcement.delete()
+
+    return JsonResponse({
+        "message": "Announcement deleted successfully",
+        "announcement_id": announcement_id
+    }, status=200)
+
+@apiv1.post("/add-completion/", auth=apiAuth)
+def add_completion_tracking(request, data: CompletionTrackingCreateSchema):
+    student_username = data.student_username  
+    try:
+        student = User.objects.get(username=student_username)
+    except User.DoesNotExist:
+        return JsonResponse({"detail": "User not found"}, status=404)
+
+    content = get_object_or_404(CourseContent, id=data.content_id)
+
+    completion, created = CompletionTracking.objects.update_or_create(
+        student=student,
+        content=content,
+        defaults={'completed': True, 'completed_at': timezone.now()}
+    )
+
+    return JsonResponse({
+        "student_username": student.username,
+        "content_id": content.id,
+        "completed": completion.completed,
+        "completed_at": completion.completed_at,
+    }, status=200)
+
+@apiv1.get("/show-completion/", auth=apiAuth, response=CompletionTrackingResponseSchema)
+def show_completion(request, course_id: int):
+    course = get_object_or_404(Course, id=course_id)
+    course_contents = CourseContent.objects.filter(course_id=course.id)
+
+    completions = CompletionTracking.objects.filter(content__in=course_contents)
+
+    completion_data = []
+    for completion in completions:
+        completion_data.append({
+            "student_id": completion.student.id,
+            "student_username": completion.student.username,
+            "content_id": completion.content.id,
+            "content_name": completion.content.name,
+            "completed": completion.completed,
+            "completed_at": completion.completed_at,
+        })
+
+    return JsonResponse({
+        "course_id": course.id,
+        "completions": completion_data
+    }, status=200)
+
+@apiv1.delete("/delete-completion/", auth=apiAuth)
+def delete_completion(request, student_id: int, content_id: int):
+    student = get_object_or_404(User, id=student_id)
+    
+    completion = CompletionTracking.objects.filter(student=student, content_id=content_id).first()
+    
+    if not completion:
+        return JsonResponse({"error": "Completion not found for this student and content."}, status=404)
+
+    completion.delete()
+    
+    return JsonResponse({"message": "Completion successfully deleted."}, status=200)
+
+@apiv1.post("/add-bookmark/", auth=apiAuth)
+def add_bookmark(request, data: BookmarkRequestSchema):
+    student_id = data.student_id
+    content_id = data.content_id
+
+    student = User.objects.get(id=student_id)  
+    content = CourseContent.objects.get(id=content_id)  
+    if Bookmark.objects.filter(student=student, content=content).exists():
+        return JsonResponse({"error": "You have already bookmarked this content."}, status=400)
+    
+    Bookmark.objects.create(student=student, content=content)
+    
+    return JsonResponse({"message": "Bookmark successfully added."}, status=200)
+
+
+@apiv1.get("/show-bookmark/", auth=apiAuth, response=BookmarkResponseSchema)
+def show_bookmark(request):
+    student_id = request.GET.get("student_id")
+
+    student = User.objects.get(id=student_id)  
+    bookmarks = Bookmark.objects.filter(student=student)
+
+    bookmark_data = []
+    for bookmark in bookmarks:
+        content = bookmark.content
+        try:
+            if hasattr(content, 'course'):
+                course = content.course
+            else:
+                course = None  
+        except AttributeError:
+            return JsonResponse({"error": "Content does not have a course field."}, status=400)
+        
+        bookmark_data.append({
+            "id": bookmark.id,
+            "student_id": bookmark.student.id,
+            "content_id": content.id,
+            "content_name": content.name,
+            "course_id": course.id if course else None,  "course_name": course.name if course else "No Course"  })
+
+    return JsonResponse({"bookmarks": bookmark_data}, status=200)
+
+
+@apiv1.delete("/delete-bookmark/", auth=apiAuth)
+def delete_bookmark(request):
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+    
+    student_id = body.get("student_id")
+    content_id = body.get("content_id")
+
+    if not student_id or not content_id:
+        return JsonResponse({"error": "Missing required fields."}, status=400)
+
+    try:
+        student = User.objects.get(id=student_id)
+        content = CourseContent.objects.get(id=content_id)
+    except User.DoesNotExist:
+        return JsonResponse({"error": "Student not found."}, status=404)
+    except CourseContent.DoesNotExist:
+        return JsonResponse({"error": "Content not found."}, status=404)
+
+    bookmark = Bookmark.objects.filter(student=student, content=content).first()
+    if not bookmark:
+        return JsonResponse({"error": "Bookmark not found."}, status=404)
+
+    bookmark.delete()
+
+    return JsonResponse({"message": "Bookmark successfully deleted."}, status=200)
