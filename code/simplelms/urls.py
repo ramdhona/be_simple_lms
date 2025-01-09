@@ -28,7 +28,6 @@ urlpatterns = [
     path('hapus/', deleteData),
     path('', index),
     path('register/', register_user, name='register_user'),
-    path('accounts/login/', login, name='login'),
     path('profile/<int:user_id>', show_profile),
     path('edit-profile/', edit_profile),
 ]

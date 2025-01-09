@@ -98,15 +98,15 @@ class AnnouncementResponseSchema(Schema):
 
 
 class CompletionTrackingCreateSchema(Schema):
-    student_username: str  # Username dari student
+    student_username: str  
     content_id: int
-    course_id: int# ID konten yang udah dikerjain
+    course_id: int
     
     
 class CompletionTrackingResponseSchema(Schema):
-    content_name: str  # Nama konten yang diselesaikan
-    completed_at: datetime  # Waktu selesai
-    completed: bool  # Status apakah udah selesai atau belum
+    content_name: str  
+    completed_at: datetime  
+    completed: bool  
     
 class BookmarkRequestSchema(Schema):
     student_id: int
@@ -120,5 +120,23 @@ class BookmarkResponseSchema(Schema):
     content_name: str
     course_id: int
     course_name: str
+    
+class PublishContentSchema(Schema):
+    username: str
+    is_published: bool
+    
+class GetCourseContentSchema(Schema):
+    username: str 
+    
+class CourseContentUpdateSchema(Schema):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    video_url: Optional[str] = None
+    file_attachment: Optional[str] = None
+    course_id: Optional[int] = None
+    parent_id: Optional[int] = None
+    teacher_id: Optional[int] = None
+    is_published: Optional[bool] = None
+
 
 

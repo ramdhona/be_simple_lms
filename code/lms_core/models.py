@@ -7,6 +7,8 @@ class Profile(models.Model):
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     profile_picture = models.ImageField(upload_to="profile_pictures/", blank=True, null=True)
+    role = models.CharField(max_length=10, choices=[('teacher', 'Teacher'), ('student', 'Student')], default='student')
+
 
     def __str__(self):
         return f"Profile of {self.user.username}"
@@ -57,6 +59,8 @@ class CourseContent(models.Model):
                                 on_delete=models.RESTRICT, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    teacher = models.ForeignKey(User, verbose_name="Pengajar", on_delete=models.CASCADE, null=True, blank=True)
+    is_published = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Konten Matkul"

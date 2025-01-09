@@ -5,9 +5,6 @@ from django.core import serializers
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
 import json
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth import authenticate, login
-from django.shortcuts import render, redirect
 
 
 

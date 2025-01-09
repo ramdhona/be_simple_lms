@@ -1,8 +1,8 @@
 from ninja import NinjaAPI, UploadedFile, File, Form
 from ninja.responses import Response
 from lms_core.schema import CourseSchemaOut, CourseMemberOut, CourseSchemaIn, AnnouncementCreateSchema, AnnouncementEditSchema, AnnouncementResponseSchema
-from lms_core.schema import CourseContentMini, CourseContentFull, CompletionTrackingCreateSchema, BookmarkRequestSchema
-from lms_core.schema import CourseCommentOut, CourseCommentIn, CompletionTrackingResponseSchema, BookmarkResponseSchema
+from lms_core.schema import CourseContentMini, CourseContentFull, CompletionTrackingCreateSchema, BookmarkRequestSchema, CourseContentUpdateSchema
+from lms_core.schema import CourseCommentOut, CourseCommentIn, CompletionTrackingResponseSchema, BookmarkResponseSchema, PublishContentSchema, GetCourseContentSchema
 from lms_core.models import Course, CourseMember, CourseContent, Comment, Profile, Announcement, CompletionTracking, Bookmark
 from django.forms.models import model_to_dict
 from ninja_simple_jwt.auth.views.api import mobile_auth_router
@@ -13,9 +13,7 @@ from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.utils import timezone
-from datetime import datetime
 import json
-from django.views.decorators.csrf import csrf_exempt
 
 
 
@@ -410,3 +408,81 @@ def delete_bookmark(request):
     bookmark.delete()
 
     return JsonResponse({"message": "Bookmark successfully deleted."}, status=200)
+
+@apiv1.put("/publish-content/{content_id}/", auth=apiAuth)
+def publish_content(request, content_id: int, data: PublishContentSchema):
+    course_content = get_object_or_404(CourseContent, id=content_id)
+
+    user = get_object_or_404(User, username=data.username)
+    
+    if user != course_content.teacher:
+        return JsonResponse({"message": "You are not authorized to perform this action."}, status=403)
+
+    course_content.is_published = data.is_published
+    course_content.save()
+
+    return JsonResponse({
+        "message": "Course content publication status updated successfully",
+        "is_published": course_content.is_published
+    }, status=200)
+
+@apiv1.put("/update-content/{content_id}/", auth=apiAuth)
+def update_course_content(request, content_id: int, data: CourseContentUpdateSchema):
+    course_content = get_object_or_404(CourseContent, id=content_id)
+    
+    if data.name is not None:
+        course_content.name = data.name
+    if data.description is not None:
+        course_content.description = data.description
+    if data.video_url is not None:
+        course_content.video_url = data.video_url
+    if data.file_attachment is not None:
+        course_content.file_attachment = data.file_attachment
+    if data.course_id is not None:
+        course_content.course_id = get_object_or_404(Course, id=data.course_id)
+    if data.parent_id is not None:
+        course_content.parent_id = get_object_or_404(CourseContent, id=data.parent_id)
+    if data.teacher_id is not None:
+        course_content.teacher = get_object_or_404(User, id=data.teacher_id)
+
+    course_content.save()
+
+    return JsonResponse({
+        "message": "Course content updated successfully",
+        "content_id": course_content.id
+    }, status=200)
+
+@apiv1.post("/course-content/{course_id}/", auth=apiAuth)
+def get_course_content(request, course_id: int, data: GetCourseContentSchema):
+    username = data.username
+    
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        return JsonResponse({"message": "User not found"}, status=404)
+
+    try:
+        profile = Profile.objects.get(user=user)
+        is_teacher = profile.role == 'teacher'  
+    except Profile.DoesNotExist:
+        is_teacher = False
+
+    if is_teacher:
+        course_contents = CourseContent.objects.filter(course_id=course_id)
+    else:
+        course_contents = CourseContent.objects.filter(course_id=course_id, is_published=True)
+
+    contents_data = []
+    for content in course_contents:
+        contents_data.append({
+            "name": content.name,
+            "description": content.description,
+            "video_url": content.video_url,
+            "file_attachment": content.file_attachment.url if content.file_attachment else None,
+            "is_published": content.is_published,
+        })
+
+    return JsonResponse({
+        "message": "Course content fetched successfully",
+        "contents": contents_data
+    }, status=200)
